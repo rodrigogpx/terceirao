@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, ToggleLeft, ToggleRight, Key, Trash2, Shield } from 'lucide-react'
 import api from '../lib/api'
 import Modal from '../components/Modal'
+import { useAuthStore } from '../store/auth'
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
@@ -11,6 +12,8 @@ export default function UsersPage() {
   const [modal, setModal] = useState(null) // 'create' | 'pw'
   const [selected, setSelected] = useState(null)
   const [err, setErr] = useState('')
+
+  const { permissions, setUserPermissions } = useAuthStore()
 
   const [form, setForm] = useState({ username:'', password:'', name:'', role:'ADMIN' })
   const [pwForm, setPwForm] = useState({ password:'' })
@@ -42,6 +45,14 @@ export default function UsersPage() {
     if (!confirm('Remover este usuário?')) return
     await api.delete(`/users/${id}`); load()
   }
+
+  const PERMS = [
+    { key: 'finance:detail', label: 'Financeiro (detalhado)' },
+    { key: 'raffles:manage', label: 'Rifas (gerenciar/sortear)' },
+    { key: 'teachers:edit', label: 'Professores (editar)' },
+    { key: 'contributors:manage', label: 'Contribuidores (gerenciar)' },
+    { key: 'students:manage', label: 'Alunos (gerenciar)' },
+  ]
 
   return (
     <div className="space-y-6">
@@ -79,6 +90,30 @@ export default function UsersPage() {
                         <button onClick={() => { setSelected(u); setErr(''); setModal('pw') }} className="text-yellow-600 hover:text-yellow-400 transition-colors"><Key size={14}/></button>
                         <button onClick={() => del(u.id)} className="text-red-700 hover:text-red-400 transition-colors"><Trash2 size={14}/></button>
                       </div>
+
+                      {u.role === 'ADMIN' && (
+                        <div className="mt-2 grid gap-1">
+                          {PERMS.map(p => {
+                            const current = permissions?.[u.id] || []
+                            const checked = current.includes(p.key)
+                            return (
+                              <label key={p.key} className="flex items-center gap-2 text-xs text-green-800">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => {
+                                    const next = e.target.checked
+                                      ? [...current, p.key]
+                                      : current.filter(x => x !== p.key)
+                                    setUserPermissions(u.id, next)
+                                  }}
+                                />
+                                {p.label}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

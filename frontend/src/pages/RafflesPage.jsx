@@ -6,6 +6,7 @@ import api from '../lib/api'
 import Modal from '../components/Modal'
 import { useAuthStore } from '../store/auth'
 import Panther from '../components/Panther'
+import axios from 'axios'
 
 export default function RafflesPage() {
   const [raffles, setRaffles] = useState([])
@@ -16,13 +17,21 @@ export default function RafflesPage() {
   const [drawing, setDrawing] = useState(false)
   const [form, setForm] = useState({ title:'', description:'', drawDate:'' })
   const [pForm, setPForm] = useState({ studentId:'', tickets:1 })
-  const { isAdmin } = useAuthStore()
+  const { isAuth, isAdmin, can } = useAuthStore()
+
+  const isAllowed = isAuth && can('raffles:manage')
 
   const load = async () => {
+    if (!isAllowed) {
+      const { data } = await axios.get('/api/public/raffles')
+      setRaffles(data)
+      setStudents([])
+      return
+    }
     const [r,s] = await Promise.all([api.get('/raffles'), api.get('/students')])
     setRaffles(r.data); setStudents(s.data)
   }
-  useEffect(()=>{ load() },[])
+  useEffect(()=>{ load() },[isAllowed])
 
   const createRaffle = async e => {
     e.preventDefault()
@@ -50,11 +59,16 @@ export default function RafflesPage() {
 
   const statusBadge = { OPEN:'badge-g', CLOSED:'badge-r', CANCELLED:'badge-y' }
 
+  const buyLink = title => {
+    const txt = encodeURIComponent(`Quero comprar a rifa: ${title}`)
+    return `https://api.whatsapp.com/send?text=${txt}`
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="stitle">Rifas</h1>
-        {isAdmin() && <button className="btn-g" onClick={()=>setModal('create')}><Plus size={15}/>Nova Rifa</button>}
+        {isAllowed && <button className="btn-g" onClick={()=>setModal('create')}><Plus size={15}/>Nova Rifa</button>}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -67,7 +81,7 @@ export default function RafflesPage() {
             </div>
             {r.description && <p className="text-xs text-green-800">{r.description}</p>}
             <div className="text-xs text-green-800 flex gap-3">
-              <span><Ticket size={10} className="inline mr-1"/>{r.participants.length} participantes</span>
+              <span><Ticket size={10} className="inline mr-1"/>{(r.participants?.length ?? r._count?.participants ?? 0)} participantes</span>
               {r.drawDate && <span>📅 {new Date(r.drawDate).toLocaleDateString('pt-BR')}</span>}
             </div>
             {r.draw?.winner && (
@@ -77,7 +91,13 @@ export default function RafflesPage() {
                 <p className="font-mono text-xs text-green-900 mt-1 break-all">#{r.draw.hash.slice(0,20)}...</p>
               </div>
             )}
-            {isAdmin() && r.status==='OPEN' && (
+            {!isAllowed && r.status==='OPEN' && (
+              <a className="btn-g w-full justify-center text-xs" href={buyLink(r.title)} target="_blank" rel="noreferrer">
+                Quero Comprar
+              </a>
+            )}
+
+            {isAllowed && r.status==='OPEN' && (
               <div className="flex gap-2">
                 <button className="btn-g flex-1 justify-center text-xs" onClick={()=>{setActiveRaffle(r.id);setModal('participant')}}>
                   <Plus size={12}/>Participante
@@ -85,7 +105,7 @@ export default function RafflesPage() {
                 <button
                   className="text-xs px-3 py-2 rounded-lg font-bold transition-all flex items-center gap-1"
                   style={{background:'linear-gradient(135deg,#4d1a00,#803000)',border:'1px solid rgba(255,120,0,0.3)',color:'#ffa060'}}
-                  onClick={()=>draw(r.id)} disabled={drawing||!r.participants.length}>
+                  onClick={()=>draw(r.id)} disabled={drawing||!(r.participants?.length)}>
                   <Play size={12}/>Sortear
                 </button>
               </div>

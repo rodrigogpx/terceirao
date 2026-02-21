@@ -4,22 +4,34 @@ import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, RefreshCw, Download } from 'lucide-react'
 import api from '../lib/api'
 import Modal from '../components/Modal'
+import axios from 'axios'
+import { useAuthStore } from '../store/auth'
 
 const fmt = n => `R$ ${Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`
 
 export default function FinancePage() {
+  const { isAuth, can } = useAuthStore()
   const [wallet, setWallet] = useState(null)
   const [ledger, setLedger] = useState({ entries:[], total:0 })
   const [students, setStudents] = useState([])
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState({ amount:'', description:'', studentId:'' })
   const [err, setErr] = useState('')
+  const [publicData, setPublicData] = useState(null)
+
+  const isAllowed = isAuth && can('finance:detail')
 
   const load = async () => {
+    if (!isAllowed) {
+      const { data } = await axios.get('/api/public/finance')
+      setPublicData(data)
+      return
+    }
     const [w,l,s] = await Promise.all([api.get('/finance/wallet'), api.get('/finance/ledger'), api.get('/students')])
     setWallet(w.data); setLedger(l.data); setStudents(s.data)
   }
-  useEffect(()=>{ load() },[])
+
+  useEffect(()=>{ load() },[isAllowed])
 
   const submit = async e => {
     e.preventDefault(); setErr('')
@@ -38,12 +50,42 @@ export default function FinancePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="stitle">Financeiro</h1>
-        <div className="flex gap-2 flex-wrap">
-          <a href="/api/finance/export/csv" className="btn-ghost text-xs"><Download size={13}/>CSV</a>
-          <button className="btn-danger" onClick={()=>{setErr('');setModal('debit')}}><TrendingDown size={14}/>Saída</button>
-          <button className="btn-g" onClick={()=>{setErr('');setModal('credit')}}><TrendingUp size={14}/>Entrada</button>
-        </div>
+        {isAllowed && (
+          <div className="flex gap-2 flex-wrap">
+            <a href="/api/finance/export/csv" className="btn-ghost text-xs"><Download size={13}/>CSV</a>
+            <button className="btn-danger" onClick={()=>{setErr('');setModal('debit')}}><TrendingDown size={14}/>Saída</button>
+            <button className="btn-g" onClick={()=>{setErr('');setModal('credit')}}><TrendingUp size={14}/>Entrada</button>
+          </div>
+        )}
       </div>
+
+      {!isAllowed && (
+        <div className="glass p-5">
+          <p className="text-xs text-green-800 uppercase tracking-wider mb-3">Termômetro da Formatura</p>
+          <div className="w-full h-4 rounded-full" style={{ background:'rgba(0,255,136,0.10)', border:'1px solid rgba(0,255,136,0.16)' }}>
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.round((publicData?.progress ?? 0) * 100)}%`,
+                background: 'linear-gradient(90deg,#00ff88,#00ccff)',
+                boxShadow: '0 0 16px rgba(0,255,136,0.25)',
+              }}
+            />
+          </div>
+          <div className="flex justify-between text-xs mt-3">
+            <span className="text-green-800">Arrecadado</span>
+            <span className="money-pos font-mono font-bold">{fmt(publicData?.raised)}</span>
+          </div>
+          <div className="flex justify-between text-xs mt-1">
+            <span className="text-green-800">Meta</span>
+            <span className="text-green-500 font-mono font-bold">{fmt(publicData?.goalAmount)}</span>
+          </div>
+          <p className="text-xs text-green-900 mt-4">Para ver o fluxo de caixa completo, é necessário acesso de Admin autorizado.</p>
+        </div>
+      )}
+
+      {isAllowed && (
+        <>
 
       <div className="grid sm:grid-cols-3 gap-4">
         {[
@@ -109,6 +151,8 @@ export default function FinancePage() {
           </div>
         </form>
       </Modal>
+        </>
+      )}
     </div>
   )
 }

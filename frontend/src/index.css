@@ -29,6 +29,10 @@
   ::-webkit-scrollbar-thumb { background: rgba(0,255,136,0.35); border-radius: 3px; }
 }
 
+@media (min-width: 768px) {
+  .bg-forest { background-attachment: fixed; }
+}
+
 @layer components {
   /* Background image */
   .bg-forest {
@@ -36,6 +40,7 @@
     inset: 0;
     z-index: 0;
     background: url('/bg.jpg') center/cover no-repeat;
+    background-attachment: scroll;
     filter: brightness(0.78) saturate(1.15);
     transition: filter 0.5s;
   }
@@ -198,3 +203,11 @@
   border-radius: 50%;
   background: radial-gradient(circle, #00ff88 0%, transparent 70%);
 }
+
+@keyframes ff {
+  0% { opacity: 0; transform: translate3d(0, 0, 0); }
+  10% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(0, -60px, 0); }
+}
+
+.animate-ff { animation-name: ff; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }

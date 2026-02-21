@@ -1,10 +1,11 @@
 // src/pages/StudentsPage.jsx
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, X, Edit2, Trophy, Ticket, Star } from 'lucide-react'
+import { Plus, Search, Edit2 } from 'lucide-react'
 import api from '../lib/api'
 import Modal from '../components/Modal'
 import { useAuthStore } from '../store/auth'
+import axios from 'axios'
 
 const fmt = n => `R$ ${Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`
 
@@ -17,10 +18,25 @@ export default function StudentsPage() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name:'', description:'' })
   const [photo, setPhoto] = useState(null)
-  const { isAdmin } = useAuthStore()
+  const { isAuth, can } = useAuthStore()
 
-  const load = () => api.get('/students').then(r => setStudents(r.data)).finally(()=>setLoading(false))
-  useEffect(()=>{ load() },[])
+  const isAllowed = isAuth && can('students:manage')
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      if (!isAllowed) {
+        const { data } = await axios.get('/api/public/students')
+        setStudents(data)
+        return
+      }
+      const { data } = await api.get('/students')
+      setStudents(data)
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(()=>{ load() },[isAllowed])
 
   const filtered = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
 
@@ -41,7 +57,7 @@ export default function StudentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="stitle">Alunos</h1>
-        {isAdmin() && <button className="btn-g" onClick={()=>{setEditing(null);setForm({name:'',description:''});setPhoto(null);setModal('form')}}><Plus size={15}/>Novo Aluno</button>}
+        {isAllowed && <button className="btn-g" onClick={()=>{setEditing(null);setForm({name:'',description:''});setPhoto(null);setModal('form')}}><Plus size={15}/>Novo Aluno</button>}
       </div>
 
       <div className="relative max-w-xs">
@@ -55,6 +71,25 @@ export default function StudentsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             <AnimatePresence>
               {filtered.map((s,i) => {
+                if (!isAllowed) {
+                  return (
+                    <motion.div key={s.id}
+                      initial={{opacity:0,scale:.92}} animate={{opacity:1,scale:1}} transition={{delay:i*.04}}
+                      className="glass p-4 cursor-pointer flex flex-col gap-3"
+                      onClick={()=>{setSelected(s);setModal('detail')}}
+                      whileHover={{scale:1.02,y:-2}}>
+                      <div className="flex flex-col items-center gap-2">
+                        {s.photo
+                          ? <img src={s.photo} alt={s.name} className="w-16 h-16 rounded-full object-cover border border-green-800"/>
+                          : <div className="w-16 h-16 rounded-full bg-green-900/50 border border-green-800 flex items-center justify-center font-display text-xl font-bold text-green-400">{s.name[0]}</div>
+                        }
+                        <p className="font-display text-xs font-bold text-green-100 text-center leading-tight">{s.name}</p>
+                        {s.description && <p className="text-xs text-green-800 text-center line-clamp-2">{s.description}</p>}
+                      </div>
+                    </motion.div>
+                  )
+                }
+
                 const eng = s.totalDonated*0.5+(s.totalTickets||0)*2+(s.wins||0)*10
                 return (
                   <motion.div key={s.id}
@@ -88,29 +123,60 @@ export default function StudentsPage() {
       {/* Detail modal */}
       <Modal open={modal==='detail'} onClose={()=>setModal(null)} title="">
         {selected && (
-          <div>
-            <div className="flex justify-center mb-4">
-              {selected.photo
-                ? <img src={selected.photo} className="w-28 h-28 rounded-full object-cover border-2 border-green-500/30"/>
-                : <div className="w-28 h-28 rounded-full bg-green-900/50 flex items-center justify-center font-display text-4xl font-bold text-green-400">{selected.name[0]}</div>
-              }
-            </div>
-            <h2 className="font-display text-xl font-bold text-green-100 text-center">{selected.name}</h2>
-            {selected.description && <p className="text-green-700 text-sm text-center mt-2">{selected.description}</p>}
-            <div className="grid grid-cols-3 gap-3 mt-5">
-              {[{l:'Ranking',v:`#${selected.rank}`,c:'#ffcc00'},{l:'Contribuído',v:fmt(selected.totalDonated),c:'#00ff88'},{l:'Vitórias',v:selected.wins,c:'#ff9900'}].map(x=>(
-                <div key={x.l} className="text-center p-3 rounded-xl" style={{background:'rgba(4,20,8,0.6)'}}>
-                  <p className="text-xs text-green-800 mb-1">{x.l}</p>
-                  <p className="font-mono font-bold text-sm" style={{color:x.c}}>{x.v}</p>
+          (!isAllowed ? (
+            <div>
+              <div className="flex justify-center mb-4">
+                {selected.photo
+                  ? <img src={selected.photo} className="w-40 h-40 rounded-2xl object-cover border border-green-500/30"/>
+                  : <div className="w-40 h-40 rounded-2xl bg-green-900/50 flex items-center justify-center font-display text-5xl font-bold text-green-400">{selected.name[0]}</div>
+                }
+              </div>
+              <h2 className="font-display text-xl font-bold text-green-100 text-center">{selected.name}</h2>
+              {selected.description && <p className="text-green-700 text-sm text-center mt-3 whitespace-pre-line">{selected.description}</p>}
+
+              {selected.graduationQuote && (
+                <div className="mt-5 p-4 rounded-xl" style={{background:'rgba(4,20,8,0.6)',border:'1px solid rgba(0,255,136,0.10)'}}>
+                  <p className="text-xs text-green-800 uppercase tracking-wider mb-2">Frase de Formatura</p>
+                  <p className="text-sm text-green-200">“{selected.graduationQuote}”</p>
                 </div>
-              ))}
+              )}
+
+              {(selected.socials?.instagram || selected.socials?.tiktok || selected.socials?.x) && (
+                <div className="mt-4">
+                  <p className="text-xs text-green-800 uppercase tracking-wider mb-2">Redes sociais</p>
+                  <div className="flex flex-col gap-2">
+                    {selected.socials?.instagram && <a className="btn-ghost justify-center" href={selected.socials.instagram} target="_blank" rel="noreferrer">Instagram</a>}
+                    {selected.socials?.tiktok && <a className="btn-ghost justify-center" href={selected.socials.tiktok} target="_blank" rel="noreferrer">TikTok</a>}
+                    {selected.socials?.x && <a className="btn-ghost justify-center" href={selected.socials.x} target="_blank" rel="noreferrer">X</a>}
+                  </div>
+                </div>
+              )}
             </div>
-            {isAdmin() && (
-              <button className="btn-g w-full justify-center mt-5" onClick={()=>{setEditing(selected);setForm({name:selected.name,description:selected.description||''});setModal('form')}}>
-                <Edit2 size={14}/> Editar
-              </button>
-            )}
-          </div>
+          ) : (
+            <div>
+              <div className="flex justify-center mb-4">
+                {selected.photo
+                  ? <img src={selected.photo} className="w-28 h-28 rounded-full object-cover border-2 border-green-500/30"/>
+                  : <div className="w-28 h-28 rounded-full bg-green-900/50 flex items-center justify-center font-display text-4xl font-bold text-green-400">{selected.name[0]}</div>
+                }
+              </div>
+              <h2 className="font-display text-xl font-bold text-green-100 text-center">{selected.name}</h2>
+              {selected.description && <p className="text-green-700 text-sm text-center mt-2">{selected.description}</p>}
+              <div className="grid grid-cols-3 gap-3 mt-5">
+                {[{l:'Ranking',v:`#${selected.rank}`,c:'#ffcc00'},{l:'Contribuído',v:fmt(selected.totalDonated),c:'#00ff88'},{l:'Vitórias',v:selected.wins,c:'#ff9900'}].map(x=>(
+                  <div key={x.l} className="text-center p-3 rounded-xl" style={{background:'rgba(4,20,8,0.6)'}}>
+                    <p className="text-xs text-green-800 mb-1">{x.l}</p>
+                    <p className="font-mono font-bold text-sm" style={{color:x.c}}>{x.v}</p>
+                  </div>
+                ))}
+              </div>
+              {isAllowed && (
+                <button className="btn-g w-full justify-center mt-5" onClick={()=>{setEditing(selected);setForm({name:selected.name,description:selected.description||''});setModal('form')}}>
+                  <Edit2 size={14}/> Editar
+                </button>
+              )}
+            </div>
+          ))
         )}
       </Modal>
 
