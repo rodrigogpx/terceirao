@@ -2,6 +2,11 @@
 const router = require('express').Router();
 const { prisma } = require('../lib/prisma');
 
+function isMissingTableError(err) {
+  const msg = String(err?.message || '');
+  return msg.includes('does not exist in the current database') || msg.includes('The table `public.');
+}
+
 function getLevel(total) {
   if (total >= 500) return 'OURO';
   if (total >= 200) return 'PRATA';
@@ -30,7 +35,19 @@ router.get('/info', async (req, res, next) => {
       siteDescription: settingsMap.siteDescription || 'Sistema de gestão do 3º Ano',
       year: settingsMap.year || new Date().getFullYear().toString(),
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      res.json({
+        studentCount: 0,
+        totalRaised: 0,
+        siteName: 'Turma Pantera',
+        siteDescription: 'Sistema de gestão do 3º Ano',
+        year: new Date().getFullYear().toString(),
+      });
+      return;
+    }
+    next(err);
+  }
 });
 
 // GET /api/public/finance — thermometer data (no ledger)
@@ -50,7 +67,13 @@ router.get('/finance', async (req, res, next) => {
       raised,
       progress: goalAmount > 0 ? Math.max(0, Math.min(1, raised / goalAmount)) : null,
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      res.json({ goalAmount: 0, raised: 0, progress: null });
+      return;
+    }
+    next(err);
+  }
 });
 
 // GET /api/public/students — public student listing (no financial data)
@@ -62,7 +85,13 @@ router.get('/students', async (req, res, next) => {
       orderBy: { name: 'asc' },
     });
     res.json(students);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      res.json([]);
+      return;
+    }
+    next(err);
+  }
 });
 
 // GET /api/public/raffles — show open raffles publicly
@@ -77,7 +106,13 @@ router.get('/raffles', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
     res.json(raffles);
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      res.json([]);
+      return;
+    }
+    next(err);
+  }
 });
 
 // GET /api/public/contributors — gamified ranking by level (no exact totals)
@@ -104,7 +139,13 @@ router.get('/contributors', async (req, res, next) => {
     computed.sort((a, b) => (order[b.level] - order[a.level]) || (b._total - a._total) || a.name.localeCompare(b.name));
 
     res.json(computed.map(({ _total, ...rest }, idx) => ({ ...rest, rank: idx + 1 })));
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (isMissingTableError(err)) {
+      res.json([]);
+      return;
+    }
+    next(err);
+  }
 });
 
 module.exports = router;
